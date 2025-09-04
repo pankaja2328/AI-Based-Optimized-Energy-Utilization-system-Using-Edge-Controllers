@@ -1,1 +1,0 @@
-# AI-Based-Optimized-Energy-Utilization-system-Using-Edge-Controllers
