@@ -1,51 +1,57 @@
 import 'package:flutter/material.dart';
+import 'pages/home_page.dart';
+import 'pages/schedules_page.dart';
+import 'pages/predictions_page.dart';
+import 'pages/settings_page.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
 
- class MyApp extends StatelessWidget{
-   const MyApp({super.key});
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
 
-   @override
-   Widget build(BuildContext context){
-     return MaterialApp(
-       debugShowCheckedModeBanner: false,
-       home: Scaffold(
-         backgroundColor: Colors.blueGrey[100],
-         appBar: AppBar(
-           title: Text("Hi Charlie"),
-           backgroundColor: Colors.blueGrey[50],
-           elevation: 0,
-           leading: Icon(Icons.menu),
-           actions:
-             [IconButton(onPressed: () {}, icon: Icon(Icons.logout))],
-         ),
-           body: Center(
-           child: Container(
-           height: 100,
-           width:400,
-           decoration: BoxDecoration(
-             color:Colors.grey[300],
-             borderRadius: BorderRadius.circular(20),
-           ),
-           padding: EdgeInsets.all(25),
-             child: Text("Hi User!",
-                 style: TextStyle(
-                   color: Colors.black,
-                   fontSize: 24
-                 )),
+class _MyAppState extends State<MyApp> {
+  int _selectedIndex = 0;
 
-             //   child: Icon(
-             //   Icons.favorite,
-             //   color: Colors.black,
-             //   size: 64,
-             // )
+  final List<Widget> _pages = const [
+    HomePage(),
+    SchedulesPage(),
+    PredictionsPage(),
+    SettingsPage(),
+  ];
 
-          )
-         )
-       )
-     ); //MaterialApp
-   }
- }
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: _pages[_selectedIndex],
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          type: BottomNavigationBarType.fixed,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.schedule), label: "Schedules"),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.bar_chart), label: "Predictions"),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.settings), label: "Settings"),
+          ],
+        ),
+      ),
+    );
+  }
+}
