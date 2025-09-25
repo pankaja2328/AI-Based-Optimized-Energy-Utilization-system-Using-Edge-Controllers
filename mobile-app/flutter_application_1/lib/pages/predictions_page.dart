@@ -1,27 +1,79 @@
-// lib/pages/predictions_page.dart
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:fl_chart/fl_chart.dart';
-import '../data/appliance_data.dart';
-import '../models/appliance.dart';
 
-class PredictionsPage extends StatelessWidget {
+class PredictionsPage extends StatefulWidget {
   const PredictionsPage({super.key});
+
+  @override
+  State<PredictionsPage> createState() => _PredictionsPageState();
+}
+
+class _PredictionsPageState extends State<PredictionsPage> {
+  List<Map<String, dynamic>> appliances = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchApplianceData();
+  }
+
+  Future<void> fetchApplianceData() async {
+    try {
+      final response = await http.get(Uri.parse("http://10.0.2.2:5000/analysis"));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          appliances = data.entries.map<Map<String, dynamic>>((entry) {
+            return {
+              'name': entry.key,
+              'original_cost': entry.value['original_cost'],
+              'optimized_cost': entry.value['optimized_cost'],
+              'savings': entry.value['savings'],
+            };
+          }).toList();
+
+          loading = false;
+        });
+      } else {
+        setState(() {
+          appliances = [];
+          loading = false;
+        });
+      }
+    } catch (e) {
+      print("Error fetching data: $e");
+      setState(() {
+        appliances = [];
+        loading = false;
+      });
+    }
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Predictions"),
-        backgroundColor: Colors.teal,
-      ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(12),
+      appBar: AppBar(title: const Text("Predictions"), backgroundColor: Colors.teal),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.builder(
+        padding: const EdgeInsets.all(16),
         itemCount: appliances.length,
         itemBuilder: (context, index) {
-          final Appliance appliance = appliances[index];
+          final appliance = appliances[index];
+
+          // If your Flask also sends a 'prediction' list, you can use it for the graph
+          final List<double> prediction =
+          appliance['prediction'] != null
+              ? List<double>.from(appliance['prediction'])
+              : [0, 0, 0, 0, 0];
+
           return Card(
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             elevation: 5,
             margin: const EdgeInsets.only(bottom: 16),
             child: Padding(
@@ -29,13 +81,15 @@ class PredictionsPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Appliance title
+                  // Appliance Title
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(appliance.name,
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text(
+                        appliance['name'],
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
                       const Icon(Icons.energy_savings_leaf, color: Colors.teal),
                     ],
                   ),
@@ -43,19 +97,17 @@ class PredictionsPage extends StatelessWidget {
 
                   // Graph
                   SizedBox(
-                    height: 150,
+                    height: 50,
                     child: LineChart(
                       LineChartData(
-                        gridData:
-                        FlGridData(show: true, drawVerticalLine: false),
+                        gridData: FlGridData(show: true, drawVerticalLine: false),
                         titlesData: FlTitlesData(show: false),
                         borderData: FlBorderData(show: false),
                         lineBarsData: [
                           LineChartBarData(
                             spots: List.generate(
-                              appliance.prediction.length,
-                                  (i) => FlSpot(
-                                  i.toDouble(), appliance.prediction[i]),
+                              prediction.length,
+                                  (i) => FlSpot(i.toDouble(), prediction[i]),
                             ),
                             isCurved: true,
                             color: Colors.teal,
@@ -70,15 +122,15 @@ class PredictionsPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
 
-                  // Usage details
+                  // Costs and Savings
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildDetail("Usage", appliance.usage, Icons.bolt),
-                      _buildDetail("Cost", appliance.cost, Icons.currency_rupee),
-                      _buildDetail("Savings", appliance.savings, Icons.savings),
+                      _buildDetail("Original", "${appliance['original_cost']} LKR"),
+                      _buildDetail("Optimized", "${appliance['optimized_cost']} LKR"),
+                      _buildDetail("Savings", "${appliance['savings']} LKR", color: Colors.green),
                     ],
-                  )
+                  ),
                 ],
               ),
             ),
@@ -88,12 +140,15 @@ class PredictionsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildDetail(String label, String value, IconData icon) {
+  Widget _buildDetail(String label, String value, {Color color = Colors.black87}) {
     return Column(
       children: [
-        Icon(icon, color: Colors.teal, size: 20),
+        Text(value,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: color,
+            )),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
         Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
     );
