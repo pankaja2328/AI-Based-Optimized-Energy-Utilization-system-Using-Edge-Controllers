@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'home_page.dart'; // import your homepage
 
 class SplashPage extends StatefulWidget {
+  const SplashPage({super.key});
+
   @override
   _SplashPageState createState() => _SplashPageState();
 }
