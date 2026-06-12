@@ -9,6 +9,7 @@ import re
 from typing import Dict, List, Tuple
 import requests
 from datetime import datetime
+import os
 from zoneinfo import ZoneInfo
 
 # =========================
@@ -17,6 +18,28 @@ from zoneinfo import ZoneInfo
 MQTT_BROKER = "test.mosquitto.org"
 MQTT_PORT = 1883
 MQTT_TOPIC = "power/tou_domestic"
+
+# =========================
+# FIREBASE INITIALIZATION
+# =========================
+db = None
+try:
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    key_path = os.path.abspath(os.path.join(base_dir, '..', '..', 'serviceAccountKey.json'))
+
+    if os.path.exists(key_path):
+        cred = credentials.Certificate(key_path)
+        firebase_admin.initialize_app(cred)
+        print(f"Firebase initialized successfully using key: {key_path}")
+    else:
+        firebase_admin.initialize_app()
+        print("Firebase initialized using default credentials.")
+    db = firestore.client()
+except Exception as e:
+    print(f"Firebase initialization skipped/failed: {e}")
 
 # Edit these to match your appliance names & typical hourly energy when ON (kWh/hour).
 APPLIANCES = [
@@ -475,7 +498,10 @@ Return only a Python list of 24 zeros or ones (no markdown, no commentary).
 # OUTPUT WRITERS
 # =========================
 def write_schedules(schedules: Dict[str, List[int]]):
-    with open('output.txt', 'w', encoding='utf-8') as f:
+    import os
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.abspath(os.path.join(base_dir, '..', '..', 'output.txt'))
+    with open(output_path, 'w', encoding='utf-8') as f:
         f.write("Optimised Appliance Schedules (24-hour ON/OFF)\n\n")
         for name in APPLIANCES:
             arr = schedules.get(name, [])
@@ -483,12 +509,15 @@ def write_schedules(schedules: Dict[str, List[int]]):
                 raise ValueError(f"{name} does not have exactly 24 states.")
             f.write(f"--- {name} ---\n")
             f.write(f"States: {arr}\n\n")
-    print("Optimised ON/OFF schedules saved to output.txt")
+    print(f"Optimised ON/OFF schedules saved to {output_path}")
 
 
 def write_explanations(explanations: Dict, currency: str):
     """Writes a human-readable reasons + cost summary file."""
-    with open('output_explanations.txt', 'w', encoding='utf-8') as f:
+    import os
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    output_explanations_path = os.path.abspath(os.path.join(base_dir, '..', '..', 'output_explanations.txt'))
+    with open(output_explanations_path, 'w', encoding='utf-8') as f:
         f.write("Scheduling Rationale and Cost Analysis\n")
         f.write("======================================\n\n")
         for name, info in explanations["per_appliance"].items():
@@ -508,7 +537,7 @@ def write_explanations(explanations: Dict, currency: str):
         if explanations['totals']['baseline'] > 0:
             pct = 100.0 * explanations['totals']['savings'] / explanations['totals']['baseline']
             f.write(f"Percent savings: {pct:.2f}%\n")
-    print("Explanations and cost report saved to output_explanations.txt")
+    print(f"Explanations and cost report saved to {output_explanations_path}")
 
 # =========================
 # MAIN LOOP
@@ -527,10 +556,15 @@ def parse_user_preferences(user_msg: str) -> Dict[str, bool]:
 
 def main_once():
     # 1) Read original states
-    status = read_appliance_status("appliance_data.txt")
+    import os
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    appliance_data_path = os.path.abspath(os.path.join(base_dir, '..', '..', 'appliance_data.txt'))
+    status = read_appliance_status(appliance_data_path)
 
     # 2) TOU from MQTT
-    tou_json_raw = get_mqtt_power_data()
+    print("[Agent] Fetching TOU rates from MQTT broker (timeout=30s)...")
+    tou_json_raw = get_mqtt_power_data(timeout=30)
+    print(f"[Agent] MQTT raw payload: {tou_json_raw[:120]}")
     try:
         tou_json = json.loads(tou_json_raw)
     except Exception as e:
@@ -548,28 +582,43 @@ def main_once():
     allow_peak = parse_user_preferences(user_msg)
 
     # 5) Build schedules
-    if USE_LLM_FOR_SCHED:
-        llm = ChatOllama(model=LLM_MODEL, temperature=LLM_TEMP)
+    use_llm = USE_LLM_FOR_SCHED
+    if use_llm:
+        try:
+            resp = requests.get("http://localhost:11434", timeout=3)
+            print(f"[Agent] ✅ Ollama reachable (status {resp.status_code}). Using LLM ({LLM_MODEL}) for scheduling.")
+            llm = ChatOllama(model=LLM_MODEL, temperature=LLM_TEMP)
+        except Exception as e:
+            print(f"[Agent] ⚠️ Ollama unreachable: {e}. Falling back to rule-based optimization.")
+            use_llm = False
+    else:
+        print("[Agent] USE_LLM_FOR_SCHED=False. Using rule-based optimization.")
 
     schedules: Dict[str, List[int]] = {}
     required_ons: Dict[str, int] = {}
 
+    mode = "LLM" if use_llm else "rule-based"
+    print(f"[Agent] Running schedule optimization in {mode} mode for {len(APPLIANCES)} appliances...")
+
     for i, appliance in enumerate(APPLIANCES):
         original = fix_length(status.get(appliance, {}).get("states", [0]*24))
         required_ons[appliance] = sum(original)
+        print(f"[Agent]   Processing {appliance} (original ON hours: {sum(original)})")
 
-        if USE_LLM_FOR_SCHED:
+        if use_llm:
             sys_prompt = build_system_prompt(APPLIANCES, status, tou_json, weather, i, allow_peak)
             user_prompt = "Output ONLY the Python array for this appliance. No explanations, no markdown."
             max_retries = 5
             out = None
             for attempt in range(max_retries):
                 try:
+                    print(f"[Agent]     LLM invoking {LLM_MODEL} for {appliance} (attempt {attempt+1})... (may take 2-5 min on CPU)")
                     response = llm.invoke([
                         {"role": "system", "content": sys_prompt},
                         {"role": "user", "content": user_prompt}
                     ])
                     out = response.content
+                    print(f"[Agent]     LLM response received ({len(out)} chars): {out[:80].strip()}...")
                     break
                 except ollama._types.ResponseError as e:
                     print(f"Ollama error: {e}. Retrying in 10s... (Attempt {attempt+1}/{max_retries})")
@@ -638,6 +687,35 @@ def main_once():
 
     explanations["totals"]["savings"] = max(0.0, explanations["totals"]["baseline"] - explanations["totals"]["optimized"])
     write_explanations(explanations, currency)
+
+    # 10) WRITE TO FIRESTORE
+    if db is not None:
+        try:
+            print("Writing outputs to Firestore...")
+            analysis_data = {}
+            for a in APPLIANCES:
+                app_info = explanations["per_appliance"][a]
+                # Keep matching keys clean (e.g. remove '_Power' suffix if desired, or keep full key)
+                clean_name = a.replace("_Power", "")
+                analysis_data[clean_name] = {
+                    "original_cost": round(app_info["original_cost"], 2),
+                    "optimized_cost": round(app_info["optimized_cost"], 2),
+                    "savings": round(app_info["savings"], 2)
+                }
+            analysis_data["updated_at"] = datetime.now().isoformat()
+            
+            db.collection("analysis").document("latest").set(analysis_data)
+            print("✅ Successfully updated analysis/latest in Firestore.")
+
+            schedules_data = {}
+            for a in APPLIANCES:
+                clean_name = a.replace("_Power", "")
+                schedules_data[clean_name] = schedules[a]
+                
+            db.collection("schedules").document("latest").set(schedules_data)
+            print("✅ Successfully updated schedules/latest in Firestore.")
+        except Exception as fe:
+            print(f"❌ Failed to write to Firestore: {fe}")
 
 
 def main_loop():
