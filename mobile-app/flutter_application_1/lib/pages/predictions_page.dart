@@ -29,7 +29,7 @@ class _PredictionsPageState extends State<PredictionsPage> {
   Future<void> fetchApplianceData() async {
     try {
       final response = await http.get(
-        Uri.parse("https://web-production-543c4.up.railway.app/analysis"),
+        Uri.parse("https://energy-api-632525537450.asia-south1.run.app/analysis"),
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

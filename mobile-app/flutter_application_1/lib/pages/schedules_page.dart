@@ -28,7 +28,7 @@ class _SchedulesPageState extends State<SchedulesPage> {
   Future<void> fetchSchedules() async {
     try {
       final response = await http.get(
-        Uri.parse("https://web-production-543c4.up.railway.app/schedules"),
+        Uri.parse("https://energy-api-632525537450.asia-south1.run.app/schedules"),
       );
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
