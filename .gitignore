@@ -5,3 +5,5 @@ __pycache__/
 *.pyd
 .ipynb_checkpoints/
 serviceAccountKey.json
+appliance_data.txt
+output*.txt
