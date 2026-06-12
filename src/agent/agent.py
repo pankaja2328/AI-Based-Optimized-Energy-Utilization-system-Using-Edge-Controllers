@@ -562,7 +562,9 @@ def main_once():
     status = read_appliance_status(appliance_data_path)
 
     # 2) TOU from MQTT
-    tou_json_raw = get_mqtt_power_data()
+    print("[Agent] Fetching TOU rates from MQTT broker (timeout=30s)...")
+    tou_json_raw = get_mqtt_power_data(timeout=30)
+    print(f"[Agent] MQTT raw payload: {tou_json_raw[:120]}")
     try:
         tou_json = json.loads(tou_json_raw)
     except Exception as e:
@@ -583,18 +585,25 @@ def main_once():
     use_llm = USE_LLM_FOR_SCHED
     if use_llm:
         try:
-            requests.get("http://localhost:11434", timeout=1)
+            resp = requests.get("http://localhost:11434", timeout=3)
+            print(f"[Agent] ✅ Ollama reachable (status {resp.status_code}). Using LLM ({LLM_MODEL}) for scheduling.")
             llm = ChatOllama(model=LLM_MODEL, temperature=LLM_TEMP)
-        except Exception:
-            print("⚠️ Local Ollama is not running or unreachable at localhost:11434. Falling back to rule-based schedule optimization.")
+        except Exception as e:
+            print(f"[Agent] ⚠️ Ollama unreachable: {e}. Falling back to rule-based optimization.")
             use_llm = False
+    else:
+        print("[Agent] USE_LLM_FOR_SCHED=False. Using rule-based optimization.")
 
     schedules: Dict[str, List[int]] = {}
     required_ons: Dict[str, int] = {}
 
+    mode = "LLM" if use_llm else "rule-based"
+    print(f"[Agent] Running schedule optimization in {mode} mode for {len(APPLIANCES)} appliances...")
+
     for i, appliance in enumerate(APPLIANCES):
         original = fix_length(status.get(appliance, {}).get("states", [0]*24))
         required_ons[appliance] = sum(original)
+        print(f"[Agent]   Processing {appliance} (original ON hours: {sum(original)})")
 
         if use_llm:
             sys_prompt = build_system_prompt(APPLIANCES, status, tou_json, weather, i, allow_peak)

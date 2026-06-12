@@ -1,51 +1,55 @@
 #!/bin/bash
 
-# --- MQTT Publisher ---
-sudo systemctl start mosquitto
+PROJECT_DIR="$(pwd)"
+
+# --- Start Ollama LLM Server (only if not already running) ---
+echo "[+] Checking Ollama server..."
+if curl -s http://localhost:11434 > /dev/null 2>&1; then
+    echo "[OK] Ollama is already running at localhost:11434."
+else
+    echo "[+] Starting Ollama server..."
+    ollama serve > /tmp/ollama.log 2>&1 &
+    OLLAMA_PID=$!
+    echo "[+] Ollama started (PID $OLLAMA_PID). Waiting 5s to be ready..."
+    sleep 5
+fi
+
+# --- Start MQTT Broker (Mosquitto) ---
+echo "[+] Starting Mosquitto MQTT broker..."
+mosquitto -d 2>/dev/null && echo "[OK] Mosquitto started." || echo "[!] Mosquitto not found; using public broker test.mosquitto.org."
+
+# --- MQTT Publisher (background) ---
 echo "[+] Starting MQTT Publisher script..."
 (
-    source /home/pankaja/Desktop/LLAMA/LangGraph/bin/activate
+    source .venv/bin/activate
     python3 src/mqtt/publish_tou_test.py
     deactivate
-    echo "[✓] MQTT Publisher finished."
+    echo "[OK] MQTT Publisher finished."
 ) &
 
-# --- Delay before starting next script ---
 sleep 10
 
-# --- LSTM Predictor ---
-echo "[+] Starting LSTM Predictor script..."
-(
-    source /home/pankaja/Desktop/Research/AI-Based-Optimized-Energy-Utilization-System-Using-Edge-Computing-Controller-main/tf-env/bin/activate
-    python3 src/predictor/Run_LSTM.py
-    deactivate
-    echo "[✓] LSTM Predictor finished."
-) &
+# --- LSTM Predictor (synchronous: wait for appliance_data.txt to be written before agent starts) ---
+echo "[+] Running LSTM Predictor (waiting for it to write appliance_data.txt)..."
+source .venv/bin/activate
+timeout 120 python3 src/predictor/Run_LSTM.py
+deactivate
+echo "[OK] LSTM Predictor finished. appliance_data.txt is ready."
 
-# --- Delay before starting next script ---
-sleep 10
-
-# --- LLM Agent ---
-echo "[+] Starting LLM Agent script..."
+# --- LLM Agent (runs after LSTM is done) ---
+echo "[+] Starting LLM Agent script (with Ollama LLM scheduling)..."
 (
-    source /home/pankaja/Desktop/LLAMA/LangGraph/bin/activate
+    source .venv/bin/activate
     python3 src/agent/agent.py
     deactivate
-    echo "[✓] LLM Agent finished."
+    echo "[OK] LLM Agent finished."
 ) &
-
-
 
 echo ""
 echo "------------------------------------"
-echo "[✓] All scripts executed in parallel with 10-second delays."
-echo "------------------------------------"
-echo "HTTP Server is running on port 8000."
-echo "------------------------------------"
-python3 -m http.server 8000 --directory /home/pankaja/Desktop/Research/External
-echo "------------------------------------"
-echo "[✓] HTTP Server finished."
+echo "[OK] All scripts executing."
+echo "[OK] MQTT Publisher running in background."
+echo "[OK] LLM Agent running with Ollama-powered scheduling."
 echo "------------------------------------"
 
-# --- Wait for all background jobs ---
 wait

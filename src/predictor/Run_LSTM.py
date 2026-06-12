@@ -27,8 +27,8 @@ appliance_names = [
     'VacuumCleaner_Power'
 ]
 seq_length = 24
-initial_fill_samples = 1440  # Fill buffer to simulate full-day prediction
-max_buffer_size = 1440  # or whatever window you want
+initial_fill_samples = 1464  # 24*61: ensures exactly 24 hourly windows after seq_length offset
+max_buffer_size = 1464
 
 # --- Load model and scaler ---
 model = load_model(model_path)
@@ -130,10 +130,16 @@ def binarize_power_values(power_values, threshold_ratio=0.6):
 # --- Process and Save States & Averages ---
 def process_and_save_predictions(all_day_predictions, appliance_names, output_filename=output_file):
     window_size = 60
+    target_windows = 24  # Always produce exactly 24 hourly states
     num_windows = len(all_day_predictions) // window_size
+
+    # If we have more windows than needed, use the last 24; if fewer, use what we have
+    num_windows = min(num_windows, target_windows)
 
     for idx, appliance_name in enumerate(appliance_names):
         power_series = all_day_predictions[:, idx]
+        # Use only the last (target_windows * window_size) predictions
+        power_series = power_series[-(num_windows * window_size):]
         avg_list = []
 
         # Compute averages for each window
@@ -141,6 +147,10 @@ def process_and_save_predictions(all_day_predictions, appliance_names, output_fi
             window = power_series[i * window_size : (i + 1) * window_size]
             avg = np.mean(window)
             avg_list.append(avg)
+
+        # Pad to exactly 24 if fewer windows (edge case)
+        while len(avg_list) < target_windows:
+            avg_list.append(avg_list[-1] if avg_list else 0.0)
 
         # Set different threshold_ratio based on appliance name
         if appliance_name in ['AC_Power', 'Heater_Power', 'WashingMachine_Power']:
@@ -156,12 +166,13 @@ def process_and_save_predictions(all_day_predictions, appliance_names, output_fi
             f.write(f"--- {appliance_name} ---\n")
             f.write("States:\n")
             if appliance_name in binary_average_states:
-                np.savetxt(f, binary_average_states[appliance_name].reshape(1, -1), fmt='%d', delimiter=', ')
+                states_line = ', '.join(map(str, binary_average_states[appliance_name].tolist()))
+                f.write(states_line + '\n')
             else:
                 f.write("Binary average states data not available\n")
             f.write("\n")
 
-    print("Binary average states saved to appliance_data.txt")
+    print(f"Binary average states saved to appliance_data.txt (24 hourly states per appliance)")
 
 # --- Run Prediction ---
 def predict_on_buffer(buffer):
