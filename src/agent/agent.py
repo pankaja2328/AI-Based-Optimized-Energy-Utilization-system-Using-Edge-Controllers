@@ -580,8 +580,14 @@ def main_once():
     allow_peak = parse_user_preferences(user_msg)
 
     # 5) Build schedules
-    if USE_LLM_FOR_SCHED:
-        llm = ChatOllama(model=LLM_MODEL, temperature=LLM_TEMP)
+    use_llm = USE_LLM_FOR_SCHED
+    if use_llm:
+        try:
+            requests.get("http://localhost:11434", timeout=1)
+            llm = ChatOllama(model=LLM_MODEL, temperature=LLM_TEMP)
+        except Exception:
+            print("⚠️ Local Ollama is not running or unreachable at localhost:11434. Falling back to rule-based schedule optimization.")
+            use_llm = False
 
     schedules: Dict[str, List[int]] = {}
     required_ons: Dict[str, int] = {}
@@ -590,7 +596,7 @@ def main_once():
         original = fix_length(status.get(appliance, {}).get("states", [0]*24))
         required_ons[appliance] = sum(original)
 
-        if USE_LLM_FOR_SCHED:
+        if use_llm:
             sys_prompt = build_system_prompt(APPLIANCES, status, tou_json, weather, i, allow_peak)
             user_prompt = "Output ONLY the Python array for this appliance. No explanations, no markdown."
             max_retries = 5
