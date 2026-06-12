@@ -1,0 +1,11 @@
+paho-mqtt
+langchain-ollama
+ollama
+requests
+beautifulsoup4
+firebase-admin
+tensorflow
+pandas
+numpy
+scikit-learn
+flask

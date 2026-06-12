@@ -7,14 +7,17 @@ from tensorflow.keras.models import load_model
 import threading
 import pandas as pd  # Add this import at the top if not already present
 
+import os
+
 # --- Configurations ---
 broker = "localhost"
 port = 1883
 topic = "home/power"
 
-model_path = 'my_lstm_model.keras'
-scaler_path = 'scaler.pkl'
-output_file = 'appliance_data.txt'
+base_dir = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(base_dir, 'my_lstm_model.keras')
+scaler_path = os.path.join(base_dir, 'scaler.pkl')
+output_file = os.path.abspath(os.path.join(base_dir, '..', '..', 'appliance_data.txt'))
 
 appliance_names = [
     'WashingMachine_Power',

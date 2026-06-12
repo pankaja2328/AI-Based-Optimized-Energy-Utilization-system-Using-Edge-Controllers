@@ -5,7 +5,7 @@ sudo systemctl start mosquitto
 echo "[+] Starting MQTT Publisher script..."
 (
     source /home/pankaja/Desktop/LLAMA/LangGraph/bin/activate
-    python3 test_publish.py
+    python3 src/mqtt/publish_tou_test.py
     deactivate
     echo "[✓] MQTT Publisher finished."
 ) &
@@ -17,7 +17,7 @@ sleep 10
 echo "[+] Starting LSTM Predictor script..."
 (
     source /home/pankaja/Desktop/Research/AI-Based-Optimized-Energy-Utilization-System-Using-Edge-Computing-Controller-main/tf-env/bin/activate
-    python3 Run_LSTM.py
+    python3 src/predictor/Run_LSTM.py
     deactivate
     echo "[✓] LSTM Predictor finished."
 ) &
@@ -29,7 +29,7 @@ sleep 10
 echo "[+] Starting LLM Agent script..."
 (
     source /home/pankaja/Desktop/LLAMA/LangGraph/bin/activate
-    python3 copy_research_agent.py
+    python3 src/agent/agent.py
     deactivate
     echo "[✓] LLM Agent finished."
 ) &

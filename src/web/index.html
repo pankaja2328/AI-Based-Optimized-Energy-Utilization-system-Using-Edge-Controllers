@@ -42,7 +42,7 @@
     }
 
     async function updateCharts() {
-      const resp = await fetch('output.txt?' + Date.now());
+      const resp = await fetch('../../output.txt?' + Date.now());
       const text = await resp.text();
       const { labels, appliances } = parseOutputTxt(text);
 
