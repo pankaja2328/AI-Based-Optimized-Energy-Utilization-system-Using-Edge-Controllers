@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 
 class SchedulesPage extends StatefulWidget {
   const SchedulesPage({super.key});
@@ -17,17 +18,35 @@ class _SchedulesPageState extends State<SchedulesPage> {
   void initState() {
     super.initState();
     fetchSchedules();
+
+    // re-fetch every 30 minutes
+    Timer.periodic(Duration(minutes: 30), (timer) {
+      fetchSchedules();
+    });
   }
 
   Future<void> fetchSchedules() async {
-    final response = await http.get(Uri.parse("http://10.0.2.2:5000/schedules"));
-    if (response.statusCode == 200) {
-      String rawData = jsonDecode(response.body)["schedules"];
-      setState(() {
-        schedules = parseSchedules(rawData);
-        loading = false;
-      });
-    } else {
+    try {
+      final response = await http.get(
+        Uri.parse("https://energy-api-632525537450.asia-south1.run.app/schedules"),
+      );
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        final rawData = decoded != null && decoded["schedules"] != null
+            ? decoded["schedules"].toString()
+            : "";
+        setState(() {
+          schedules = parseSchedules(rawData);
+          loading = false;
+        });
+      } else {
+        print("/schedules returned ${response.statusCode}: ${response.body}");
+        setState(() {
+          loading = false;
+        });
+      }
+    } catch (e, st) {
+      print("Error fetching schedules: $e\n$st");
       setState(() {
         loading = false;
       });
@@ -42,7 +61,10 @@ class _SchedulesPageState extends State<SchedulesPage> {
     for (var m in matches) {
       String name = m.group(1)!.trim();
       String statesStr = m.group(2)!;
-      List<int> states = statesStr.split(',').map((s) => int.parse(s.trim())).toList();
+      List<int> states = statesStr
+          .split(',')
+          .map((s) => int.parse(s.trim()))
+          .toList();
       result[name] = states;
     }
     return result;
@@ -51,68 +73,86 @@ class _SchedulesPageState extends State<SchedulesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Schedules"), backgroundColor: Colors.teal),
+      appBar: AppBar(
+        title: const Text("Schedules"),
+        backgroundColor: Colors.teal,
+      ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-        padding: const EdgeInsets.all(16),
-        children: schedules.entries.map((entry) {
-          final name = entry.key;
-          final states = entry.value;
+              padding: const EdgeInsets.all(16),
+              children: schedules.entries.map((entry) {
+                final name = entry.key;
+                final states = entry.value;
 
-          // Extract ON hours for text display
-          final onHours = List.generate(24, (i) => i).where((i) => states[i] == 1).toList();
+                // Extract ON hours for text display
+                final onHours = List.generate(
+                  24,
+                  (i) => i,
+                ).where((i) => states[i] == 1).toList();
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-
-              // Row of 24 boxes
-              Row(
-                children: List.generate(24, (i) {
-                  return Expanded(
-                    child: Tooltip(
-                      message: "${i}:00 - ${states[i] == 1 ? 'ON' : 'OFF'}",
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 1),
-                        height: 25,
-                        color: states[i] == 1 ? Colors.green : Colors.grey[300],
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  );
-                }),
-              ),
+                    const SizedBox(height: 8),
 
-              const SizedBox(height: 4),
-
-              // Hour labels
-              Row(
-                children: List.generate(24, (i) {
-                  return Expanded(
-                    child: Text(
-                      "$i",
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 10),
+                    // Row of 24 boxes
+                    Row(
+                      children: List.generate(24, (i) {
+                        return Expanded(
+                          child: Tooltip(
+                            message:
+                                "$i:00 - ${states[i] == 1 ? 'ON' : 'OFF'}",
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 1),
+                              height: 25,
+                              color: states[i] == 1
+                                  ? Colors.green
+                                  : Colors.grey[300],
+                            ),
+                          ),
+                        );
+                      }),
                     ),
-                  );
-                }),
-              ),
 
-              const SizedBox(height: 8),
+                    const SizedBox(height: 4),
 
-              // Text showing ON hours
-              Text("ON Hours: ${onHours.join(', ')}",
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    // Hour labels
+                    Row(
+                      children: List.generate(24, (i) {
+                        return Expanded(
+                          child: Text(
+                            "$i",
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                        );
+                      }),
+                    ),
 
-              const SizedBox(height: 16),
-            ],
-          );
-        }).toList(),
-      ),
+                    const SizedBox(height: 8),
+
+                    // Text showing ON hours
+                    Text(
+                      "ON Hours: ${onHours.join(', ')}",
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+                  ],
+                );
+              }).toList(),
+            ),
     );
   }
 }

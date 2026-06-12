@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../widgets/stat_card.dart';
-import '../widgets/power_usage_box.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 class HomePage extends StatelessWidget {
