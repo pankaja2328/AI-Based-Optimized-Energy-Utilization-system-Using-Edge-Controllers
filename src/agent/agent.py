@@ -612,11 +612,13 @@ def main_once():
             out = None
             for attempt in range(max_retries):
                 try:
+                    print(f"[Agent]     LLM invoking {LLM_MODEL} for {appliance} (attempt {attempt+1})... (may take 2-5 min on CPU)")
                     response = llm.invoke([
                         {"role": "system", "content": sys_prompt},
                         {"role": "user", "content": user_prompt}
                     ])
                     out = response.content
+                    print(f"[Agent]     LLM response received ({len(out)} chars): {out[:80].strip()}...")
                     break
                 except ollama._types.ResponseError as e:
                     print(f"Ollama error: {e}. Retrying in 10s... (Attempt {attempt+1}/{max_retries})")
